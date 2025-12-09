@@ -26,7 +26,6 @@ import {
   ChevronDown,
   TrendingUp,
   Target,
-  Calendar,
   Award,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -218,7 +217,6 @@ export function Habits() {
       
       for (let i = 0; i < weeksToCheck; i++) {
         const weekStartDate = subWeeks(startOfWeek(now), i)
-        const weekEndDate = addDays(weekStartDate, 6)
         
         let weekCompleted = false
         for (let d = 0; d < 7; d++) {

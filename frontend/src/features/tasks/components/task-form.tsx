@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Plus } from 'lucide-react'
-import { tasksApi, categoriesApi, goalsApi, type Task } from '@/lib/api'
+import { tasksApi, categoriesApi, goalsApi, type Task, type Goal } from '@/lib/api'
 import { toast } from 'sonner'
 
 const formSchema = z.object({
@@ -126,7 +126,7 @@ export function TaskForm({ task, parentTaskId, onSaved, onCancel }: TaskFormProp
   })
 
   const createGoalMutation = useMutation({
-    mutationFn: (data: { title: string; type: string; startDate: string; endDate: string; status: string }) => 
+    mutationFn: (data: { title: string; type: Goal['type']; startDate: string; endDate: string; status: Goal['status'] }) => 
       goalsApi.create(data),
     onSuccess: (response) => {
       toast.success('Goal created')

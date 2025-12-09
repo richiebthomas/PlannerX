@@ -1,7 +1,7 @@
 // path: src/features/dashboard/index.tsx
 
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, startOfDay, endOfDay } from 'date-fns'
 import {
   Calendar,
@@ -42,7 +42,6 @@ import { TaskForm } from '@/features/tasks/components/task-form'
 import { EventForm } from '@/features/calendar/components/event-form'
 import { HabitForm } from '@/features/habits/components/habit-form'
 import { GoalForm } from '@/features/goals/components/goal-form'
-import { toast } from 'sonner'
 
 export function Dashboard() {
   const { user } = useAuthStore()

@@ -63,8 +63,8 @@ export function Goals() {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       
       // Check if a next goal was created (for recurring goals)
-      if (response.data.nextGoal) {
-        const nextGoal = response.data.nextGoal
+      const nextGoal = (response as any)?.data?.nextGoal
+      if (nextGoal) {
         const startDate = format(new Date(nextGoal.startDate), 'MMM d')
         const endDate = format(new Date(nextGoal.endDate), 'MMM d')
         toast.success(
@@ -230,7 +230,7 @@ function GoalCard({
             <CardTitle className='text-base flex items-center gap-2'>
               {goal.title}
               {goal.isRecurring && (
-                <Repeat className='h-4 w-4 text-muted-foreground' title='Recurring goal' />
+                <Repeat className='h-4 w-4 text-muted-foreground' />
               )}
             </CardTitle>
             <div className='mt-1 flex items-center gap-2'>
