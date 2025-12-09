@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+/frontend/node_modules
+/backend/node_modules
+
+# Build outputs
+dist/
+/frontend/dist
+/backend/dist
+
+# Environment files
+.env
+.env.*
+/frontend/.env
+/backend/.env
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Vercel / tool caches
+.vercel
+.turbo
