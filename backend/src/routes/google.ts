@@ -352,7 +352,7 @@ router.post('/sync-now', async (req: Request, res: Response) => {
       channelId: channel?.channelId ?? null,
       syncToken: channel?.syncToken ?? null,
       forceFull: !channel?.syncToken, // if no token, do a broader pull
-      daysWindow: 90,
+      daysWindow: channel?.syncToken ? undefined : 30, // Smaller window if no syncToken to avoid timeout
     })
 
     console.log('[Sync-Now] Manual sync completed successfully')
@@ -417,6 +417,7 @@ async function syncFromGoogle(args: {
   forceFull: boolean
   daysWindow?: number
 }) {
+  const startTime = Date.now()
   const { userId, calendarId, channelId, syncToken, forceFull, daysWindow } = args
   
   console.log('[Sync] Starting syncFromGoogle', {
@@ -489,6 +490,21 @@ async function syncFromGoogle(args: {
       nextSyncToken = res.data.nextSyncToken
     }
 
+    // Separate cancelled events for batch deletion
+    const cancelledEventIds: string[] = []
+    const validEvents: Array<{
+      id: string
+      summary: string | undefined
+      description: string | null
+      location: string | null
+      start: string
+      end: string
+      allDay: boolean
+      recurringEventId: string | undefined
+      etag: string | null
+    }> = []
+
+    // Process items to separate cancelled vs valid events
     for (const item of items) {
       if (!item.id) {
         console.warn('[Sync] Skipping item without ID', { summary: item.summary })
@@ -496,13 +512,7 @@ async function syncFromGoogle(args: {
       }
 
       if (item.status === 'cancelled') {
-        const deleteResult = await prisma.event.deleteMany({
-          where: { userId, googleEventId: item.id } as any,
-        })
-        if (deleteResult.count > 0) {
-          deleted++
-          console.log(`[Sync] Deleted cancelled event`, { googleEventId: item.id, title: item.summary })
-        }
+        cancelledEventIds.push(item.id)
         continue
       }
 
@@ -513,64 +523,98 @@ async function syncFromGoogle(args: {
         continue
       }
 
-      const allDay = !!item.start?.date
-      const startDate = allDay ? normalizeAllDayDate(start) : new Date(start)
-      const endDate = allDay ? normalizeAllDayDate(end) : new Date(end)
-
-      const existing = await prisma.event.findFirst({
-        where: { userId, googleEventId: item.id } as any,
+      validEvents.push({
+        id: item.id,
+        summary: item.summary,
+        description: item.description || null,
+        location: item.location || null,
+        start,
+        end,
+        allDay: !!item.start?.date,
+        recurringEventId: item.recurringEventId,
+        etag: item.etag || null,
       })
+    }
 
-      if (existing) {
-        await prisma.event.update({
-          where: { id: existing.id },
-          data: {
-            title: item.summary || 'Untitled event',
-            description: item.description || null,
-            location: item.location || null,
-            startTime: startDate,
-            endTime: endDate,
-            allDay,
-            isRecurring: !!item.recurringEventId,
-            googleCalendarId: calendarId,
-            googleEtag: item.etag || null,
-          } as any,
+    // Batch delete cancelled events
+    if (cancelledEventIds.length > 0) {
+      const deleteResult = await prisma.event.deleteMany({
+        where: {
+          userId,
+          googleEventId: { in: cancelledEventIds } as any,
+        } as any,
+      })
+      deleted += deleteResult.count
+      console.log(`[Sync] Batch deleted ${deleteResult.count} cancelled events`)
+    }
+
+    // Batch fetch existing events
+    const existingEvents = await prisma.event.findMany({
+      where: {
+        userId,
+        googleEventId: { in: validEvents.map(e => e.id) } as any,
+      } as any,
+      select: { id: true, googleEventId: true },
+    })
+    const existingMap = new Map(existingEvents.map(e => [e.googleEventId as string, e.id]))
+
+    // Batch upsert events with concurrency limit
+    const BATCH_SIZE = 20
+    for (let i = 0; i < validEvents.length; i += BATCH_SIZE) {
+      const batch = validEvents.slice(i, i + BATCH_SIZE)
+      await Promise.allSettled(
+        batch.map(async (event) => {
+          try {
+            const startDate = event.allDay ? normalizeAllDayDate(event.start) : new Date(event.start)
+            const endDate = event.allDay ? normalizeAllDayDate(event.end) : new Date(event.end)
+            const existingId = existingMap.get(event.id)
+
+            const eventData = {
+              title: event.summary || 'Untitled event',
+              description: event.description,
+              location: event.location,
+              startTime: startDate,
+              endTime: endDate,
+              allDay: event.allDay,
+              isRecurring: !!event.recurringEventId,
+              googleCalendarId: calendarId,
+              googleEtag: event.etag,
+            } as any
+
+            if (existingId) {
+              await prisma.event.update({
+                where: { id: existingId },
+                data: eventData,
+              })
+              updated++
+            } else {
+              await prisma.event.create({
+                data: {
+                  ...eventData,
+                  userId,
+                  googleEventId: event.id,
+                  isFocusBlock: false,
+                },
+              })
+              created++
+            }
+          } catch (err) {
+            console.error(`[Sync] Failed to upsert event ${event.id}`, {
+              error: err instanceof Error ? err.message : String(err),
+              title: event.summary,
+            })
+            throw err
+          }
         })
-        updated++
-        console.log(`[Sync] Updated event`, { 
-          googleEventId: item.id, 
-          title: item.summary,
-          allDay,
-          startTime: startDate.toISOString(),
-        })
-      } else {
-        await prisma.event.create({
-          data: {
-            userId,
-            title: item.summary || 'Untitled event',
-            description: item.description || null,
-            location: item.location || null,
-            startTime: startDate,
-            endTime: endDate,
-            allDay,
-            isFocusBlock: false,
-            isRecurring: !!item.recurringEventId,
-            googleEventId: item.id,
-            googleCalendarId: calendarId,
-            googleEtag: item.etag || null,
-          } as any,
-        })
-        created++
-        console.log(`[Sync] Created event`, { 
-          googleEventId: item.id, 
-          title: item.summary,
-          allDay,
-          startTime: startDate.toISOString(),
-        })
-      }
+      )
+    }
+
+    if (validEvents.length > 0) {
+      console.log(`[Sync] Page ${pageCount}: Processed ${validEvents.length} events (${created} created, ${updated} updated)`)
     }
   } while (pageToken)
 
+  const duration = Date.now() - startTime
   console.log('[Sync] Google sync complete', {
     calendarId,
     totalEventsFetched: total,
@@ -583,6 +627,8 @@ async function syncFromGoogle(args: {
     channelId: channelId || null,
     nextSyncTokenSet: !!nextSyncToken,
     nextSyncToken: nextSyncToken?.substring(0, 20) + '...' || null,
+    durationMs: duration,
+    durationSeconds: (duration / 1000).toFixed(2),
   })
 
   if (nextSyncToken && channelId) {
