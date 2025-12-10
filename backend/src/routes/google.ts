@@ -632,11 +632,22 @@ async function syncFromGoogle(args: {
   })
 
   if (nextSyncToken && channelId) {
-    await (prisma as any).googleChannel.update({
-      where: { channelId },
-      data: { syncToken: nextSyncToken } as any,
-    })
-    console.log('[Sync] Updated syncToken in channel', { channelId })
+    try {
+      const updateResult = await (prisma as any).googleChannel.updateMany({
+        where: { channelId },
+        data: { syncToken: nextSyncToken } as any,
+      })
+      if (updateResult.count > 0) {
+        console.log('[Sync] Updated syncToken in channel', { channelId })
+      } else {
+        console.warn('[Sync] Channel not found when trying to update syncToken', { channelId })
+      }
+    } catch (error) {
+      console.error('[Sync] Failed to update syncToken in channel', {
+        error: error instanceof Error ? error.message : String(error),
+        channelId,
+      })
+    }
   } else if (nextSyncToken && !channelId) {
     console.warn('[Sync] Got nextSyncToken but no channelId to store it', { nextSyncToken: nextSyncToken.substring(0, 20) + '...' })
   } else if (!nextSyncToken && syncToken) {
