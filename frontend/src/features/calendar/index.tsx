@@ -39,8 +39,7 @@ import {
 } from '@/components/ui/dialog'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
-import { ProfileDropdown } from '@/components/profile-dropdown'
-import { ThemeSwitch } from '@/components/theme-switch'
+
 import { eventsApi, type Event } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { EventForm } from './components/event-form'
@@ -143,8 +142,7 @@ export function Calendar({ view }: CalendarProps) {
             <Plus className='mr-1 h-4 w-4' />
             Add Event
           </Button>
-          <ThemeSwitch />
-          <ProfileDropdown />
+
         </div>
       </Header>
 

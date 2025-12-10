@@ -31,8 +31,6 @@ import {
 } from '@/components/ui/dialog'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
-import { ProfileDropdown } from '@/components/profile-dropdown'
-import { ThemeSwitch } from '@/components/theme-switch'
 import { eventsApi, tasksApi, habitsApi, goalsApi, type Task, type Event, type Habit } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -169,8 +167,7 @@ export function Dashboard() {
           <h1 className='text-lg font-semibold'>Dashboard</h1>
         </div>
         <div className='ms-auto flex items-center space-x-4'>
-          <ThemeSwitch />
-          <ProfileDropdown />
+
         </div>
       </Header>
 

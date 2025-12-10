@@ -7,10 +7,6 @@ import {
   Target,
   Repeat,
   BookOpen,
-  Bell,
-  Settings,
-  UserCog,
-  Palette,
 } from 'lucide-react'
 import { type SidebarData } from '../types'
 
@@ -84,27 +80,6 @@ export const sidebarData: SidebarData = {
     {
       title: 'Other',
       items: [
-        {
-          title: 'Notifications',
-          url: '/notifications',
-          icon: Bell,
-        },
-        {
-          title: 'Settings',
-          icon: Settings,
-          items: [
-            {
-              title: 'Account',
-              url: '/settings',
-              icon: UserCog,
-            },
-            {
-              title: 'Appearance',
-              url: '/settings/appearance',
-              icon: Palette,
-            },
-          ],
-        },
       ],
     },
   ],

@@ -47,8 +47,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
-import { ProfileDropdown } from '@/components/profile-dropdown'
-import { ThemeSwitch } from '@/components/theme-switch'
+
 import { habitsApi, type Habit, type HabitLog } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -325,8 +324,7 @@ export function Habits() {
             <Plus className='mr-1 h-4 w-4' />
             Add Habit
           </Button>
-          <ThemeSwitch />
-          <ProfileDropdown />
+
         </div>
       </Header>
 

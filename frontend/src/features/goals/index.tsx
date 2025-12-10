@@ -33,8 +33,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
-import { ProfileDropdown } from '@/components/profile-dropdown'
-import { ThemeSwitch } from '@/components/theme-switch'
+
 import { goalsApi, type Goal } from '@/lib/api'
 // Removed unused cn import
 import { toast } from 'sonner'
@@ -129,8 +128,7 @@ export function Goals() {
             <Plus className='mr-1 h-4 w-4' />
             Add Goal
           </Button>
-          <ThemeSwitch />
-          <ProfileDropdown />
+
         </div>
       </Header>
 

@@ -14,6 +14,7 @@ import habitsRoutes from './routes/habits.js'
 import goalsRoutes from './routes/goals.js'
 import notesRoutes from './routes/notes.js'
 import notificationsRoutes from './routes/notifications.js'
+import googleRoutes from './routes/google.js'
 
 const app = express()
 const PORT = env.PORT
@@ -37,6 +38,7 @@ app.use('/api/habits', habitsRoutes)
 app.use('/api/goals', goalsRoutes)
 app.use('/api/notes', notesRoutes)
 app.use('/api/notifications', notificationsRoutes)
+app.use('/api/google', googleRoutes)
 
 // Health check
 app.get('/api/health', (req, res) => {

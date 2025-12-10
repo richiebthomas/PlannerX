@@ -35,6 +35,8 @@ model User {
   notes         Note[]
   notifications Notification[]
   attachments   Attachment[]
+  googleAccount GoogleAccount?
+  googleChannels GoogleChannel[]
 }
 
 model Session {
@@ -90,6 +92,11 @@ model Event {
   recurrenceEnd   DateTime?
   parentEventId   String?  // For recurring event instances
 
+  // Google Calendar mapping
+  googleEventId    String?
+  googleCalendarId String?
+  googleEtag       String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -104,6 +111,7 @@ model Event {
   @@index([userId])
   @@index([userId, startTime])
   @@index([categoryId])
+  @@unique([userId, googleEventId])
 }
 
 // ============================================
@@ -147,6 +155,47 @@ model Task {
   @@index([categoryId])
   @@index([goalId])
   @@index([parentTaskId])
+}
+
+// ============================================
+// GOOGLE INTEGRATION
+// ============================================
+
+model GoogleAccount {
+  id            String   @id @default(cuid())
+  userId        String
+  googleUserId  String
+  googleEmail   String
+  accessToken   String
+  refreshToken  String
+  scope         String?
+  expiresAt     DateTime
+  selectedCalendarId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+  @@unique([googleUserId])
+}
+
+model GoogleChannel {
+  id          String   @id @default(cuid())
+  userId      String
+  calendarId  String   // Google calendar id (e.g., primary or specific)
+  channelId   String   // X-Goog-Channel-ID
+  resourceId  String   // X-Goog-Resource-ID
+  expiration  DateTime // Channel expiration
+  syncToken   String?  // For incremental sync
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, calendarId])
+  @@unique([channelId])
+  @@unique([resourceId])
 }
 
 enum Priority {

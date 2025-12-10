@@ -29,6 +29,7 @@ import { Route as AuthenticatedNotificationsIndexRouteImport } from './routes/_a
 import { Route as AuthenticatedJournalIndexRouteImport } from './routes/_authenticated/journal/index'
 import { Route as AuthenticatedHabitsIndexRouteImport } from './routes/_authenticated/habits/index'
 import { Route as AuthenticatedGoalsIndexRouteImport } from './routes/_authenticated/goals/index'
+import { Route as AuthenticatedSettingsIntegrationsRouteImport } from './routes/_authenticated/settings/integrations'
 import { Route as AuthenticatedSettingsAppearanceRouteImport } from './routes/_authenticated/settings/appearance'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedCalendarWeekRouteImport } from './routes/_authenticated/calendar/week'
@@ -139,6 +140,12 @@ const AuthenticatedGoalsIndexRoute = AuthenticatedGoalsIndexRouteImport.update({
   path: '/goals/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSettingsIntegrationsRoute =
+  AuthenticatedSettingsIntegrationsRouteImport.update({
+    id: '/integrations',
+    path: '/integrations',
+    getParentRoute: () => AuthenticatedSettingsRouteRoute,
+  } as any)
 const AuthenticatedSettingsAppearanceRoute =
   AuthenticatedSettingsAppearanceRouteImport.update({
     id: '/appearance',
@@ -189,6 +196,7 @@ export interface FileRoutesByFullPath {
   '/calendar/week': typeof AuthenticatedCalendarWeekRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/settings/integrations': typeof AuthenticatedSettingsIntegrationsRoute
   '/goals': typeof AuthenticatedGoalsIndexRoute
   '/habits': typeof AuthenticatedHabitsIndexRoute
   '/journal': typeof AuthenticatedJournalIndexRoute
@@ -214,6 +222,7 @@ export interface FileRoutesByTo {
   '/calendar/week': typeof AuthenticatedCalendarWeekRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/settings/integrations': typeof AuthenticatedSettingsIntegrationsRoute
   '/goals': typeof AuthenticatedGoalsIndexRoute
   '/habits': typeof AuthenticatedHabitsIndexRoute
   '/journal': typeof AuthenticatedJournalIndexRoute
@@ -242,6 +251,7 @@ export interface FileRoutesById {
   '/_authenticated/calendar/week': typeof AuthenticatedCalendarWeekRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/settings/appearance': typeof AuthenticatedSettingsAppearanceRoute
+  '/_authenticated/settings/integrations': typeof AuthenticatedSettingsIntegrationsRoute
   '/_authenticated/goals/': typeof AuthenticatedGoalsIndexRoute
   '/_authenticated/habits/': typeof AuthenticatedHabitsIndexRoute
   '/_authenticated/journal/': typeof AuthenticatedJournalIndexRoute
@@ -270,6 +280,7 @@ export interface FileRouteTypes {
     | '/calendar/week'
     | '/errors/$error'
     | '/settings/appearance'
+    | '/settings/integrations'
     | '/goals'
     | '/habits'
     | '/journal'
@@ -295,6 +306,7 @@ export interface FileRouteTypes {
     | '/calendar/week'
     | '/errors/$error'
     | '/settings/appearance'
+    | '/settings/integrations'
     | '/goals'
     | '/habits'
     | '/journal'
@@ -322,6 +334,7 @@ export interface FileRouteTypes {
     | '/_authenticated/calendar/week'
     | '/_authenticated/errors/$error'
     | '/_authenticated/settings/appearance'
+    | '/_authenticated/settings/integrations'
     | '/_authenticated/goals/'
     | '/_authenticated/habits/'
     | '/_authenticated/journal/'
@@ -487,6 +500,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedGoalsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/settings/integrations': {
+      id: '/_authenticated/settings/integrations'
+      path: '/integrations'
+      fullPath: '/settings/integrations'
+      preLoaderRoute: typeof AuthenticatedSettingsIntegrationsRouteImport
+      parentRoute: typeof AuthenticatedSettingsRouteRoute
+    }
     '/_authenticated/settings/appearance': {
       id: '/_authenticated/settings/appearance'
       path: '/appearance'
@@ -527,12 +547,15 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedSettingsRouteRouteChildren {
   AuthenticatedSettingsAppearanceRoute: typeof AuthenticatedSettingsAppearanceRoute
+  AuthenticatedSettingsIntegrationsRoute: typeof AuthenticatedSettingsIntegrationsRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
 }
 
 const AuthenticatedSettingsRouteRouteChildren: AuthenticatedSettingsRouteRouteChildren =
   {
     AuthenticatedSettingsAppearanceRoute: AuthenticatedSettingsAppearanceRoute,
+    AuthenticatedSettingsIntegrationsRoute:
+      AuthenticatedSettingsIntegrationsRoute,
     AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
   }
 

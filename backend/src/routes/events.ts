@@ -3,6 +3,8 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
+import { getOAuthClient } from '../lib/google.js'
+import { google } from 'googleapis'
 import { authenticateToken } from '../middleware/auth.js'
 
 const router = Router()
@@ -116,17 +118,21 @@ router.post('/', async (req: Request, res: Response) => {
 
     const data = result.data
 
+    const allDay = data.allDay ?? false
+    const startTime = allDay ? normalizeAllDayDate(data.startTime) : new Date(data.startTime)
+    const endTime = allDay ? normalizeAllDayDate(data.endTime) : new Date(data.endTime)
+
     const event = await prisma.event.create({
       data: {
         userId: req.user!.userId,
         title: data.title,
         description: data.description,
         location: data.location,
-        startTime: new Date(data.startTime),
-        endTime: new Date(data.endTime),
-        allDay: data.allDay ?? false,
+        startTime,
+        endTime,
+        allDay,
         isFocusBlock: data.isFocusBlock ?? false,
-        categoryId: data.categoryId,
+        categoryId: normalizeNullableId(data.categoryId),
         color: data.color,
         isRecurring: data.isRecurring ?? false,
         recurrenceRule: data.recurrenceRule,
@@ -137,6 +143,8 @@ router.post('/', async (req: Request, res: Response) => {
         reminders: true,
       },
     })
+
+    await syncToGoogle(req.user!.userId, event)
 
     res.status(201).json(event)
   } catch (error) {
@@ -162,17 +170,31 @@ router.patch('/:id', async (req: Request, res: Response) => {
     }
 
     const data = result.data
+    const allDay = data.allDay ?? existing.allDay ?? false
+    const startTime =
+      data.startTime !== undefined
+        ? allDay
+          ? normalizeAllDayDate(data.startTime)
+          : new Date(data.startTime)
+        : undefined
+    const endTime =
+      data.endTime !== undefined
+        ? allDay
+          ? normalizeAllDayDate(data.endTime)
+          : new Date(data.endTime)
+        : undefined
+
     const event = await prisma.event.update({
       where: { id: req.params.id },
       data: {
         title: data.title,
         description: data.description,
         location: data.location,
-        startTime: data.startTime ? new Date(data.startTime) : undefined,
-        endTime: data.endTime ? new Date(data.endTime) : undefined,
+        startTime,
+        endTime,
         allDay: data.allDay,
         isFocusBlock: data.isFocusBlock,
-        categoryId: data.categoryId,
+        categoryId: data.categoryId !== undefined ? normalizeNullableId(data.categoryId) : undefined,
         color: data.color,
         isRecurring: data.isRecurring,
         recurrenceRule: data.recurrenceRule,
@@ -184,6 +206,8 @@ router.patch('/:id', async (req: Request, res: Response) => {
       },
     })
 
+    await syncToGoogle(req.user!.userId, event)
+
     res.json(event)
   } catch (error) {
     console.error('Update event error:', error)
@@ -194,9 +218,17 @@ router.patch('/:id', async (req: Request, res: Response) => {
 // Delete event
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
+    const existing = await prisma.event.findFirst({
+      where: { id: req.params.id, userId: req.user!.userId },
+    })
+
     const result = await prisma.event.deleteMany({
       where: { id: req.params.id, userId: req.user!.userId },
     })
+
+    if (existing) {
+      await deleteFromGoogle(req.user!.userId, existing)
+    }
 
     if (result.count === 0) {
       return res.status(404).json({ error: 'Event not found' })
@@ -235,5 +267,113 @@ router.post('/:id/reminders', async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to add reminder' })
   }
 })
+
+async function getCalendarClientForUser(userId: string) {
+  const account = await prisma.googleAccount.findUnique({
+    where: { userId },
+  })
+  if (!account || !account.selectedCalendarId) return null
+
+  const auth = getOAuthClient()
+  auth.setCredentials({
+    access_token: account.accessToken,
+    refresh_token: account.refreshToken,
+  })
+
+  const calendar = google.calendar({ version: 'v3', auth })
+  return { calendar, account }
+}
+
+function mapEventToGoogle(event: any) {
+  const isAllDay = event.allDay
+  const start = isAllDay
+    ? { date: toDateOnly(event.startTime) }
+    : { dateTime: event.startTime.toISOString() }
+  const end = isAllDay
+    ? { date: toDateOnly(event.endTime) }
+    : { dateTime: event.endTime.toISOString() }
+
+  return {
+    summary: event.title,
+    description: event.description || undefined,
+    location: event.location || undefined,
+    start,
+    end,
+  }
+}
+
+async function syncToGoogle(userId: string, event: any) {
+  const client = await getCalendarClientForUser(userId)
+  if (!client) return
+  const { calendar, account } = client
+  const calendarId = account.selectedCalendarId!
+
+  const body = mapEventToGoogle(event)
+
+  let googleEventId = event.googleEventId
+  let googleEtag = event.googleEtag
+
+  try {
+    if (googleEventId) {
+      const res = await calendar.events.patch({
+        calendarId,
+        eventId: googleEventId,
+        requestBody: body,
+      })
+      googleEtag = res.data.etag || googleEtag
+    } else {
+      const res = await calendar.events.insert({
+        calendarId,
+        requestBody: body,
+      })
+      googleEventId = res.data.id || undefined
+      googleEtag = res.data.etag || googleEtag
+    }
+
+    if (googleEventId) {
+      await prisma.event.update({
+        where: { id: event.id },
+        data: {
+          googleEventId,
+          googleCalendarId: calendarId,
+          googleEtag,
+        },
+      })
+    }
+  } catch (err) {
+    console.warn('syncToGoogle failed', err)
+  }
+}
+
+async function deleteFromGoogle(userId: string, event: any) {
+  const client = await getCalendarClientForUser(userId)
+  if (!client) return
+  const { calendar, account } = client
+  const calendarId = account.selectedCalendarId!
+
+  if (!event.googleEventId) return
+  try {
+    await calendar.events.delete({
+      calendarId,
+      eventId: event.googleEventId,
+    })
+  } catch (err) {
+    console.warn('deleteFromGoogle failed', err)
+  }
+}
+
+function normalizeAllDayDate(dateStr: string) {
+  const d = new Date(dateStr)
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0, 0))
+}
+
+function toDateOnly(date: Date) {
+  return date.toISOString().split('T')[0]
+}
+
+function normalizeNullableId(value: string | null | undefined) {
+  if (!value || value === 'none') return null
+  return value
+}
 
 export default router

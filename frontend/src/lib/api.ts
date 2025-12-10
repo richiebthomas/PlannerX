@@ -148,6 +148,12 @@ export interface Notification {
   createdAt: string
 }
 
+export interface GoogleCalendarListItem {
+  id?: string | null
+  summary?: string | null
+  primary?: boolean | null
+}
+
 // Auth API
 export const authApi = {
   register: (data: { email: string; password: string; name?: string }) =>
@@ -230,6 +236,15 @@ export const goalsApi = {
   create: (data: Partial<Goal>) => api.post<Goal>('/goals', data),
   update: (id: string, data: Partial<Goal>) => api.patch<Goal>(`/goals/${id}`, data),
   delete: (id: string) => api.delete(`/goals/${id}`),
+}
+
+// Google Calendar API
+export const googleApi = {
+  getAuthUrl: () => api.get<{ url: string }>('/google/auth'),
+  listCalendars: () => api.get<{ items: GoogleCalendarListItem[] }>('/google/calendars'),
+  startWatch: (calendarId: string) => api.post('/google/watch', { calendarId }),
+  disconnect: () => api.delete('/google/disconnect'),
+  syncNow: () => api.post('/google/sync-now'),
 }
 
 // Notes API

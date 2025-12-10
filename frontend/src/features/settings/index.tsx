@@ -1,5 +1,5 @@
 import { Outlet } from '@tanstack/react-router'
-import { Palette, UserCog } from 'lucide-react'
+import { Palette, UserCog, Link2 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { ConfigDrawer } from '@/components/config-drawer'
 import { Header } from '@/components/layout/header'
@@ -19,6 +19,11 @@ const sidebarNavItems = [
     title: 'Appearance',
     href: '/settings/appearance',
     icon: <Palette size={18} />,
+  },
+  {
+    title: 'App Integrations',
+    href: '/settings/integrations',
+    icon: <Link2 size={18} />,
   },
 ]
 
