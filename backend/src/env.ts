@@ -16,5 +16,6 @@ export const env = {
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI,
   GOOGLE_WEBHOOK_URL: process.env.GOOGLE_WEBHOOK_URL,
+  COOKIE_DOMAIN: process.env.COOKIE_DOMAIN, // e.g. .plannerx.app (leading dot)
 } as const
 
