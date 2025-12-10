@@ -286,11 +286,16 @@ async function getCalendarClientForUser(userId: string) {
 
 function mapEventToGoogle(event: any) {
   const isAllDay = event.allDay
+  const startDateOnly = isAllDay ? toLocalDateOnly(event.startTime) : null
+  const endDateOnly = isAllDay ? toLocalDateOnly(event.endTime) : null
+
   const start = isAllDay
-    ? { date: toDateOnly(event.startTime) }
+    ? { date: startDateOnly }
     : { dateTime: event.startTime.toISOString() }
+
+  // Google expects all-day end as exclusive; bump by 1 day
   const end = isAllDay
-    ? { date: toDateOnly(event.endTime) }
+    ? { date: addDaysDateOnly(endDateOnly || startDateOnly, 1) }
     : { dateTime: event.endTime.toISOString() }
 
   return {
@@ -367,8 +372,17 @@ function normalizeAllDayDate(dateStr: string) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0, 0))
 }
 
-function toDateOnly(date: Date) {
-  return date.toISOString().split('T')[0]
+function toLocalDateOnly(date: Date) {
+  const d = new Date(date)
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
+  return d.toISOString().split('T')[0]
+}
+
+function addDaysDateOnly(dateOnly: string | null, days: number) {
+  if (!dateOnly) return undefined
+  const d = new Date(`${dateOnly}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().split('T')[0]
 }
 
 function normalizeNullableId(value: string | null | undefined) {
