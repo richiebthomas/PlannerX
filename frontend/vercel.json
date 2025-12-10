@@ -3,7 +3,7 @@
     {
       "source": "/(.*)",
       "destination": "/index.html"
-    }
+    },
+    { "source": "/api/:path*", "destination": "https://plannerx-api.vercel.app/api/:path*" }
   ]
 }
-
