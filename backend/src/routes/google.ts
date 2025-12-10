@@ -26,8 +26,19 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
   const channelId = req.header('X-Goog-Channel-ID')
   const resourceId = req.header('X-Goog-Resource-ID')
+  const resourceState = req.header('X-Goog-Resource-State')
+  const messageNumber = req.header('X-Goog-Message-Number')
+
+  console.log('[Webhook] Received webhook notification', {
+    channelId,
+    resourceId,
+    resourceState,
+    messageNumber,
+    timestamp: new Date().toISOString(),
+  })
 
   if (!channelId || !resourceId) {
+    console.warn('[Webhook] Missing required headers, ignoring webhook')
     return
   }
 
@@ -35,7 +46,18 @@ router.post('/webhook', async (req: Request, res: Response) => {
     const channel = await (prisma as any).googleChannel.findUnique({
       where: { channelId },
     })
-    if (!channel) return
+    
+    if (!channel) {
+      console.warn('[Webhook] Channel not found in DB', { channelId, resourceId })
+      return
+    }
+
+    console.log('[Webhook] Found channel, starting sync', {
+      userId: channel.userId,
+      calendarId: channel.calendarId,
+      hasSyncToken: !!channel.syncToken,
+      syncToken: channel.syncToken?.substring(0, 20) + '...',
+    })
 
     await syncFromGoogle({
       userId: channel.userId,
@@ -44,8 +66,15 @@ router.post('/webhook', async (req: Request, res: Response) => {
       channelId: channel.channelId,
       forceFull: false,
     })
+
+    console.log('[Webhook] Sync completed successfully')
   } catch (error) {
-    console.error('Webhook handling error', error)
+    console.error('[Webhook] Handling error', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      channelId,
+      resourceId,
+    })
   }
 })
 
@@ -159,11 +188,20 @@ router.post('/watch', async (req: Request, res: Response) => {
   const parsed = bodySchema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: parsed.error.message })
 
+  console.log('[Watch] Starting watch channel', {
+    userId: req.user!.userId,
+    calendarId: parsed.data.calendarId,
+    webhookUrl: env.GOOGLE_WEBHOOK_URL,
+  })
+
   try {
     const account = await (prisma as any).googleAccount.findUnique({
       where: { userId: req.user!.userId },
     })
-    if (!account) return res.status(400).json({ error: 'Not connected to Google' })
+    if (!account) {
+      console.warn('[Watch] No Google account found', { userId: req.user!.userId })
+      return res.status(400).json({ error: 'Not connected to Google' })
+    }
 
     const auth = getOAuthClient()
     auth.setCredentials({
@@ -186,8 +224,15 @@ router.post('/watch', async (req: Request, res: Response) => {
     const expiration = watchRes.data.expiration
 
     if (!resourceId || !expiration) {
+      console.error('[Watch] Missing resourceId or expiration from Google', { watchRes: watchRes.data })
       return res.status(500).json({ error: 'Failed to start watch channel' })
     }
+
+    console.log('[Watch] Watch channel created successfully', {
+      channelId,
+      resourceId,
+      expiration: new Date(Number(expiration)).toISOString(),
+    })
 
     // Optional: prime syncToken by performing an initial list (lightweight)
     let syncToken: string | null = null
@@ -200,9 +245,12 @@ router.post('/watch', async (req: Request, res: Response) => {
       })
       if (listRes.data.nextSyncToken) {
         syncToken = listRes.data.nextSyncToken
+        console.log('[Watch] Initial syncToken obtained', { syncToken: syncToken.substring(0, 20) + '...' })
       }
     } catch (err) {
-      console.warn('Initial sync token fetch failed; will sync on webhook', err)
+      console.warn('[Watch] Initial sync token fetch failed; will sync on webhook', {
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
 
     try {
@@ -223,9 +271,11 @@ router.post('/watch', async (req: Request, res: Response) => {
           syncToken: syncToken || undefined,
         },
       })
+      console.log('[Watch] Channel saved to database', { channelId })
     } catch (err: any) {
       // Handle unique constraint on resourceId by updating the existing channel for this resourceId
       if (err?.code === 'P2002' && err?.meta?.target?.includes('resourceId')) {
+        console.log('[Watch] Updating existing channel with same resourceId', { resourceId })
         await (prisma as any).googleChannel.update({
           where: { resourceId },
           data: {
@@ -247,9 +297,21 @@ router.post('/watch', async (req: Request, res: Response) => {
       data: { selectedCalendarId: parsed.data.calendarId },
     })
 
+    console.log('[Watch] Watch channel setup complete', {
+      userId: req.user!.userId,
+      calendarId: parsed.data.calendarId,
+      channelId,
+      resourceId,
+    })
+
     return res.json({ channelId, resourceId, expiration })
   } catch (error) {
-    console.error('Start watch error', error)
+    console.error('[Watch] Start watch error', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      userId: req.user!.userId,
+      calendarId: parsed.data.calendarId,
+    })
     return res.status(500).json({ error: 'Failed to start watch' })
   }
 })
@@ -257,11 +319,15 @@ router.post('/watch', async (req: Request, res: Response) => {
 // Manual sync (on-demand pull) for current user's selected calendar
 router.post('/sync-now', async (req: Request, res: Response) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' })
+  
+  console.log('[Sync-Now] Manual sync requested', { userId: req.user.userId })
+  
   try {
     const account = await (prisma as any).googleAccount.findUnique({
       where: { userId: req.user.userId },
     })
     if (!account || !account.selectedCalendarId) {
+      console.warn('[Sync-Now] No connected Google calendar', { userId: req.user.userId })
       return res.status(400).json({ error: 'No connected Google calendar' })
     }
 
@@ -273,52 +339,103 @@ router.post('/sync-now', async (req: Request, res: Response) => {
       },
     })
 
+    console.log('[Sync-Now] Starting sync', {
+      userId: req.user.userId,
+      calendarId: account.selectedCalendarId,
+      hasChannel: !!channel,
+      hasSyncToken: !!channel?.syncToken,
+    })
+
     await syncFromGoogle({
       userId: req.user.userId,
       calendarId: account.selectedCalendarId,
       channelId: channel?.channelId ?? null,
       syncToken: channel?.syncToken ?? null,
       forceFull: !channel?.syncToken, // if no token, do a broader pull
+      daysWindow: 90,
     })
 
+    console.log('[Sync-Now] Manual sync completed successfully')
     return res.json({ synced: true })
   } catch (error) {
-    console.error('Manual sync error', error)
+    console.error('[Sync-Now] Manual sync error', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      userId: req.user.userId,
+    })
     return res.status(500).json({ error: 'Failed to sync now' })
   }
 })
 
-// Webhook endpoint (Google push notifications)
-router.post('/webhook', async (req: Request, res: Response) => {
-  // Google expects quick 200
-  res.status(200).end()
-
-  const channelId = req.header('X-Goog-Channel-ID')
-  const resourceId = req.header('X-Goog-Resource-ID')
-  const resourceState = req.header('X-Goog-Resource-State') // e.g., exists, sync, not_exists
-
-  if (!channelId || !resourceId) {
-    return
-  }
-
+// One-time backfill (larger window) for current user's selected calendar
+router.post('/backfill', async (req: Request, res: Response) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' })
+  
+  console.log('[Backfill] Backfill requested', { userId: req.user.userId })
+  
   try {
-    const channel = await (prisma as any).googleChannel.findUnique({
-      where: { channelId },
+    const account = await (prisma as any).googleAccount.findUnique({
+      where: { userId: req.user.userId },
     })
-    if (!channel) return
+    if (!account || !account.selectedCalendarId) {
+      console.warn('[Backfill] No connected Google calendar', { userId: req.user.userId })
+      return res.status(400).json({ error: 'No connected Google calendar' })
+    }
 
-    await syncFromGoogle(channel)
+    console.log('[Backfill] Starting backfill (1 year window)', {
+      userId: req.user.userId,
+      calendarId: account.selectedCalendarId,
+    })
+
+    // Ignore syncToken and pull a larger window (1 year)
+    await syncFromGoogle({
+      userId: req.user.userId,
+      calendarId: account.selectedCalendarId,
+      channelId: null,
+      syncToken: null,
+      forceFull: true,
+      daysWindow: 365,
+    })
+
+    console.log('[Backfill] Backfill completed successfully')
+    return res.json({ backfilled: true })
   } catch (error) {
-    console.error('Webhook handling error', error)
+    console.error('[Backfill] Backfill sync error', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      userId: req.user.userId,
+    })
+    return res.status(500).json({ error: 'Failed to backfill' })
   }
 })
 
-async function syncFromGoogle(args: { userId: string; calendarId: string; channelId?: string | null; syncToken: string | null; forceFull: boolean }) {
-  const { userId, calendarId, channelId, syncToken, forceFull } = args
+async function syncFromGoogle(args: {
+  userId: string
+  calendarId: string
+  channelId?: string | null
+  syncToken: string | null
+  forceFull: boolean
+  daysWindow?: number
+}) {
+  const { userId, calendarId, channelId, syncToken, forceFull, daysWindow } = args
+  
+  console.log('[Sync] Starting syncFromGoogle', {
+    userId,
+    calendarId,
+    channelId: channelId || null,
+    hasSyncToken: !!syncToken,
+    syncToken: syncToken?.substring(0, 20) + '...' || null,
+    forceFull,
+    daysWindow: daysWindow ?? 90,
+  })
+
   const account = await (prisma as any).googleAccount.findUnique({
     where: { userId },
   })
-  if (!account) return
+  if (!account) {
+    console.error('[Sync] Google account not found', { userId })
+    return
+  }
 
   const auth = getOAuthClient()
   auth.setCredentials({
@@ -330,8 +447,13 @@ async function syncFromGoogle(args: { userId: string; calendarId: string; channe
   let pageToken: string | undefined = undefined
   let nextSyncToken: string | null = null
   let total = 0
+  let pageCount = 0
+  let created = 0
+  let updated = 0
+  let deleted = 0
 
   do {
+    pageCount++
     const listParams: any = {
       calendarId,
       singleEvents: true,
@@ -342,32 +464,54 @@ async function syncFromGoogle(args: { userId: string; calendarId: string; channe
 
     if (!forceFull && syncToken) {
       listParams.syncToken = syncToken
+      console.log(`[Sync] Page ${pageCount}: Using syncToken for incremental sync`)
     } else {
-      listParams.timeMin = addDays(new Date(), -90).toISOString()
+      const windowDays = daysWindow ?? 90
+      listParams.timeMin = addDays(new Date(), -windowDays).toISOString()
       listParams.orderBy = 'updated'
+      console.log(`[Sync] Page ${pageCount}: Using time window (${windowDays} days)`, {
+        timeMin: listParams.timeMin,
+      })
     }
 
     const res = await calendar.events.list(listParams)
     const items = res.data.items || []
-    total += items.length
+    const pageItemCount = items.length
+    total += pageItemCount
+    
+    console.log(`[Sync] Page ${pageCount}: Fetched ${pageItemCount} events from Google`, {
+      hasNextPage: !!res.data.nextPageToken,
+      hasNextSyncToken: !!res.data.nextSyncToken,
+    })
+
     pageToken = res.data.nextPageToken || undefined
     if (res.data.nextSyncToken) {
       nextSyncToken = res.data.nextSyncToken
     }
 
     for (const item of items) {
-      if (!item.id) continue
+      if (!item.id) {
+        console.warn('[Sync] Skipping item without ID', { summary: item.summary })
+        continue
+      }
 
       if (item.status === 'cancelled') {
-        await prisma.event.deleteMany({
+        const deleteResult = await prisma.event.deleteMany({
           where: { userId, googleEventId: item.id } as any,
         })
+        if (deleteResult.count > 0) {
+          deleted++
+          console.log(`[Sync] Deleted cancelled event`, { googleEventId: item.id, title: item.summary })
+        }
         continue
       }
 
       const start = item.start?.dateTime || item.start?.date
       const end = item.end?.dateTime || item.end?.date
-      if (!start || !end) continue
+      if (!start || !end) {
+        console.warn('[Sync] Skipping item without start/end', { googleEventId: item.id, summary: item.summary })
+        continue
+      }
 
       const allDay = !!item.start?.date
       const startDate = allDay ? normalizeAllDayDate(start) : new Date(start)
@@ -392,6 +536,13 @@ async function syncFromGoogle(args: { userId: string; calendarId: string; channe
             googleEtag: item.etag || null,
           } as any,
         })
+        updated++
+        console.log(`[Sync] Updated event`, { 
+          googleEventId: item.id, 
+          title: item.summary,
+          allDay,
+          startTime: startDate.toISOString(),
+        })
       } else {
         await prisma.event.create({
           data: {
@@ -409,17 +560,29 @@ async function syncFromGoogle(args: { userId: string; calendarId: string; channe
             googleEtag: item.etag || null,
           } as any,
         })
+        created++
+        console.log(`[Sync] Created event`, { 
+          googleEventId: item.id, 
+          title: item.summary,
+          allDay,
+          startTime: startDate.toISOString(),
+        })
       }
     }
   } while (pageToken)
 
-  console.log('Google sync complete', {
+  console.log('[Sync] Google sync complete', {
     calendarId,
-    total,
+    totalEventsFetched: total,
+    pagesProcessed: pageCount,
+    created,
+    updated,
+    deleted,
     usedSyncToken: !!syncToken && !forceFull,
     forceFull,
     channelId: channelId || null,
     nextSyncTokenSet: !!nextSyncToken,
+    nextSyncToken: nextSyncToken?.substring(0, 20) + '...' || null,
   })
 
   if (nextSyncToken && channelId) {
@@ -427,6 +590,11 @@ async function syncFromGoogle(args: { userId: string; calendarId: string; channe
       where: { channelId },
       data: { syncToken: nextSyncToken } as any,
     })
+    console.log('[Sync] Updated syncToken in channel', { channelId })
+  } else if (nextSyncToken && !channelId) {
+    console.warn('[Sync] Got nextSyncToken but no channelId to store it', { nextSyncToken: nextSyncToken.substring(0, 20) + '...' })
+  } else if (!nextSyncToken && syncToken) {
+    console.warn('[Sync] No nextSyncToken received but had syncToken - sync may have failed or returned no changes')
   }
 }
 

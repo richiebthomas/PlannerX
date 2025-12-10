@@ -14,6 +14,7 @@ export function GoogleCalendarConnect() {
   const [disconnecting, setDisconnecting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [lastWatchedCalendar, setLastWatchedCalendar] = useState<string>('')
+  const [backfilling, setBackfilling] = useState(false)
 
   const primaryCalendarId = useMemo(
     () => calendars.find((c) => c.primary)?.id || calendars[0]?.id || '',
@@ -88,6 +89,18 @@ export function GoogleCalendarConnect() {
     }
   }
 
+  const handleBackfill = async () => {
+    setBackfilling(true)
+    try {
+      await googleApi.backfill()
+      toast.success('Backfill started/completed for last 1 year')
+    } catch {
+      toast.error('Failed to backfill')
+    } finally {
+      setBackfilling(false)
+    }
+  }
+
   // Auto-enable real-time sync when connected and calendar is selected
   useEffect(() => {
     const run = async () => {
@@ -141,6 +154,14 @@ export function GoogleCalendarConnect() {
                   <CloudDownload className='mr-2 h-4 w-4' />
                 )}
                 Sync now
+              </Button>
+              <Button variant='outline' size='sm' onClick={handleBackfill} disabled={backfilling}>
+                {backfilling ? (
+                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                ) : (
+                  <CloudDownload className='mr-2 h-4 w-4' />
+                )}
+                Backfill (1 year)
               </Button>
               <Button
                 variant='outline'

@@ -245,6 +245,7 @@ export const googleApi = {
   startWatch: (calendarId: string) => api.post('/google/watch', { calendarId }),
   disconnect: () => api.delete('/google/disconnect'),
   syncNow: () => api.post('/google/sync-now'),
+  backfill: () => api.post('/google/backfill'),
 }
 
 // Notes API
